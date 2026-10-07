@@ -33,7 +33,7 @@ export default function Home(){
   const [discoverOpen,setDiscoverOpen] = useState(false);
   const [menuOpen,setMenuOpen] = useState(false);
   const [profileOpen,setProfileOpen] = useState(false);
-  const [view,setView] = useState<"pipeline"|"list"|"priority">("pipeline");
+  const [view,setView] = useState<"today"|"pipeline"|"list"|"priority">("today");
   const [compact,setCompact] = useState(false);
   const [scoreMin,setScoreMin] = useState(0);
   const [stageFilter,setStageFilter] = useState<LeadStage|"Tous">("Tous");
@@ -95,6 +95,16 @@ export default function Home(){
     await updateStage(id,stage);
   };
 
+  const today=new Date().toISOString().slice(0,10);
+  const dueFollowups=leads.filter(l=>l.follow_up_at&&l.follow_up_at<=today&&l.stage==="Contacté");
+  const actionGroups=[
+    {title:"À ajouter",subtitle:"Ouvrir LinkedIn et envoyer la demande",items:leads.filter(l=>l.stage==="À ajouter")},
+    {title:"Messages prêts",subtitle:"À valider puis envoyer",items:leads.filter(l=>l.stage==="Message prêt")},
+    {title:"Relances dues",subtitle:"À reprendre aujourd'hui",items:dueFollowups},
+    {title:"Réponses",subtitle:"À traiter",items:leads.filter(l=>l.stage==="Répondu")},
+  ];
+  const actionCount=actionGroups.reduce((n,g)=>n+g.items.length,0);
+
   const kpis = [
     ["Prospects", leads.length],
     ["Qualifiés", leads.filter(l=>["Qualifié","À ajouter","Connecté","Message prêt","Contacté","Répondu"].includes(l.stage)).length],
@@ -136,10 +146,11 @@ export default function Home(){
 
     <section className="board-panel">
       <div className="board-head">
-        <div className="tabs"><button className={"tab "+(view==="pipeline"?"active":"")} onClick={()=>setView("pipeline")}>Pipeline</button><button className={"tab "+(view==="list"?"active":"")} onClick={()=>setView("list")}>Tous</button><button className={"tab "+(view==="priority"?"active":"")} onClick={()=>setView("priority")}>Priorité haute</button></div>
+        <div className="tabs"><button className={"tab "+(view==="today"?"active":"")} onClick={()=>setView("today")}>Aujourd'hui {actionCount>0&&<b className="tab-count">{actionCount}</b>}</button><button className={"tab "+(view==="pipeline"?"active":"")} onClick={()=>setView("pipeline")}>Pipeline</button><button className={"tab "+(view==="list"?"active":"")} onClick={()=>setView("list")}>Tous</button><button className={"tab "+(view==="priority"?"active":"")} onClick={()=>setView("priority")}>Priorité haute</button></div>
         <div className="board-meta">{filtered.length} prospects</div>
       </div>
-      {loading ? <div className="loading-state">Chargement du pipeline...</div> : view==="list" ?
+      {loading ? <div className="loading-state">Chargement du pipeline...</div> : view==="today" ?
+      <div className="today-view"><div className="today-intro"><div><span className="eyebrow">FOCUS DU JOUR</span><h2>{actionCount ? actionCount+" actions à traiter" : "Tout est à jour"}</h2></div><button className="secondary" onClick={()=>setDiscoverOpen(true)}>+ Trouver des prospects</button></div><div className="action-grid">{actionGroups.map(group=><section className="action-group" key={group.title}><div className="action-group-head"><div><strong>{group.title}</strong><span>{group.subtitle}</span></div><b>{group.items.length}</b></div>{group.items.slice(0,8).map(lead=><button className="action-row" key={lead.id} onClick={()=>setSelected(lead)}><span className="company-dot">{lead.company.charAt(0)}</span><span><strong>{lead.company}</strong><small>{lead.contact}</small></span><em>{lead.score}</em><i>→</i></button>)}{group.items.length===0&&<div className="action-empty">Rien à faire</div>}</section>)}</div></div> : view==="list" ?
       <div className="lead-table-wrap"><table className="lead-table"><thead><tr><th>Entreprise</th><th>Contact</th><th>Étape</th><th>Score</th><th>Tags</th><th></th></tr></thead><tbody>{filtered.map(lead=><tr key={lead.id} onClick={()=>setSelected(lead)}><td><strong>{lead.company}</strong></td><td>{lead.contact}</td><td><span className="stage-pill">{lead.stage}</span></td><td>{lead.score}</td><td><div className="tags">{lead.tags.slice(0,2).map(t=><span key={t}>{t}</span>)}</div></td><td>↗</td></tr>)}</tbody></table></div> :
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <div className={"board "+(compact?"compact-board":"")}>
