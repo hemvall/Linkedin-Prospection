@@ -31,6 +31,9 @@ export default function Home(){
   const [selected,setSelected] = useState<Lead | null>(initialLeads[4]);
   const [query,setQuery] = useState("");
   const [discoverOpen,setDiscoverOpen] = useState(false);
+  const [discoveryQuery,setDiscoveryQuery] = useState("Intégrateurs Odoo France, petites équipes");
+  const [discoveryMinScore,setDiscoveryMinScore] = useState(80);
+  const [discoveryTag,setDiscoveryTag] = useState("Tous");
   const [menuOpen,setMenuOpen] = useState(false);
   const [profileOpen,setProfileOpen] = useState(false);
   const [view,setView] = useState<"today"|"pipeline"|"list"|"priority">("today");
@@ -200,11 +203,11 @@ export default function Home(){
     {discoverOpen && <div className="overlay" onClick={()=>setDiscoverOpen(false)}>
       <aside className="drawer discovery-drawer" onClick={e=>e.stopPropagation()}>
         <div className="drawer-head">
-          <div><div className="eyebrow">DISCOVERY QUEUE</div><h2>Nouveaux prospects</h2><p>Candidats pré-qualifiés selon ton ICP.</p></div>
+          <div><div className="eyebrow">DISCOVERY ENGINE</div><h2>Nouveaux prospects</h2><p>Recherche, filtre et valide avant entrée dans le pipeline.</p></div>
           <button className="close" onClick={()=>setDiscoverOpen(false)}>×</button>
         </div>
-        <div className="candidate-list">
-          {prospectCandidates.map(candidate=>{
+        <div className="discovery-controls"><label>ICP / recherche<input value={discoveryQuery} onChange={e=>setDiscoveryQuery(e.target.value)} placeholder="ex. intégrateurs Odoo France" /></label><div><label>Score min.<input type="number" min="0" max="100" value={discoveryMinScore} onChange={e=>setDiscoveryMinScore(Number(e.target.value))}/></label><label>Segment<select value={discoveryTag} onChange={e=>setDiscoveryTag(e.target.value)}><option>Tous</option>{[...new Set(prospectCandidates.flatMap(c=>c.tags))].map(t=><option key={t}>{t}</option>)}</select></label></div><p>Sources vérifiables uniquement. L'ajout au pipeline reste manuel.</p></div><div className="candidate-list">
+          {prospectCandidates.filter(candidate=>candidate.score>=discoveryMinScore&&(discoveryTag==="Tous"||candidate.tags.includes(discoveryTag))&&([candidate.company,candidate.contact,...candidate.tags].join(" ").toLowerCase().includes(discoveryQuery.toLowerCase().split(",")[0].trim())||discoveryQuery.length<4)).map(candidate=>{
             const already=leads.some(l=>l.company===candidate.company);
             return <article className="candidate-card" key={candidate.id}>
               <div className="candidate-head">
