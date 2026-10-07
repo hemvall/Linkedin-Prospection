@@ -67,12 +67,21 @@ export default function Home(){
     setLeads(prev=>[...prev,data as Lead]);
   };
 
+  const logActivity=async(prospect_id:number,type:string,lead?:Lead)=>{await supabase.from("prospect_activities").insert({prospect_id,type,angle:lead?.angle??"",message:lead?.message??""})};
+  const datePlus=(days:number)=>{const d=new Date();d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)};
+
   const updateStage=async(id:number, stage:LeadStage)=>{
     const before=leads;
     setLeads(prev=>prev.map(l=>l.id===id?{...l,stage}:l));
     setSelected(prev=>prev?.id===id?{...prev,stage}:prev);
     const {error}=await supabase.from("prospects").update({stage,position:leads.filter(l=>l.stage===stage).length}).eq("id",id);
-    if(error){console.error(error);setLeads(before)}
+    if(error){console.error(error);setLeads(before);return}
+    const lead=leads.find(l=>l.id===id);
+    if(stage==="Contacté"){
+      await saveLead(id,{contacted_at:new Date().toISOString(),follow_up_at:lead?.follow_up_at??datePlus(4)});
+      await logActivity(id,"message_sent",lead);
+    }
+    if(stage==="Répondu"){await saveLead(id,{replied_at:new Date().toISOString(),follow_up_at:null});await logActivity(id,"reply",lead)}
   };
 
   const saveLead=async(id:number, patch:Partial<Lead>)=>{
@@ -225,6 +234,7 @@ export default function Home(){
 
         <section className="drawer-section"><h3>Pourquoi c'est un bon match</h3><p>{selected.why}</p></section>
         <section className="drawer-section"><h3>Angle recommandé</h3><p>{selected.angle}</p></section>
+        <section className="drawer-section quick-actions"><h3>Action rapide</h3><div className="quick-grid"><button onClick={()=>updateStage(selected.id,"Contacté")}>✓ Message envoyé</button><button onClick={()=>updateStage(selected.id,"Répondu")}>↩ A répondu</button><button onClick={()=>{saveLead(selected.id,{follow_up_at:datePlus(4)});logActivity(selected.id,"follow_up",selected)}}>⏱ Relancer +4j</button><button onClick={()=>logActivity(selected.id,"positive_reply",selected)}>✦ Réponse positive</button><button onClick={()=>logActivity(selected.id,"call",selected)}>◉ RDV obtenu</button><button onClick={()=>logActivity(selected.id,"client",selected)}>★ Client gagné</button></div></section>
         <section className="drawer-section crm-section"><div className="section-title"><h3>Suivi</h3><span className="save-hint">sauvegarde auto</span></div><label>Relance<input type="date" value={selected.follow_up_at??""} onChange={e=>saveLead(selected.id,{follow_up_at:e.target.value||null})}/></label><label>Notes<textarea className="notes-area" value={selected.notes??""} onChange={e=>saveLead(selected.id,{notes:e.target.value})} placeholder="Contexte, réponse, prochaine action..." /></label></section>
         <section className="drawer-section message-section">
           <div className="section-title"><h3>Message préparé</h3><button onClick={()=>navigator.clipboard.writeText(selected.message)}>Copier</button></div>
