@@ -20,6 +20,10 @@ export type Lead = {
   angle: string;
   message: string;
   position?: number;
+  notes?: string;
+  follow_up_at?: string | null;
+  contacted_at?: string | null;
+  replied_at?: string | null;
 };
 
 export const leads: Lead[] = [
