@@ -37,6 +37,7 @@ export default function Home(){
   const [compact,setCompact] = useState(false);
   const [scoreMin,setScoreMin] = useState(0);
   const [stageFilter,setStageFilter] = useState<LeadStage|"Tous">("Tous");
+  const [activities,setActivities] = useState<{id:number;prospect_id:number;type:string;angle:string;created_at:string}[]>([]);
 
   useEffect(()=>{ void loadLeads(); },[]);
 
@@ -49,6 +50,7 @@ export default function Home(){
       const {data:inserted,error:seedError}=await supabase.from("prospects").insert(seed).select();
       if(seedError){console.error(seedError);setLeads(initialLeads)} else setLeads((inserted??[]) as Lead[]);
     } else setLeads(data as Lead[]);
+    const {data:acts}=await supabase.from("prospect_activities").select("*").order("created_at",{ascending:false});setActivities((acts??[]) as typeof activities);
     setLoading(false);
   }
 
@@ -114,6 +116,15 @@ export default function Home(){
   ];
   const actionCount=actionGroups.reduce((n,g)=>n+g.items.length,0);
 
+  const funnel=[
+    ["Ajoutés",leads.length],
+    ["Connectés",leads.filter(l=>["Connecté","Message prêt","Contacté","Répondu"].includes(l.stage)).length],
+    ["Contactés",leads.filter(l=>["Contacté","Répondu"].includes(l.stage)).length],
+    ["Réponses",activities.filter(a=>a.type==="reply").length],
+    ["Positives",activities.filter(a=>a.type==="positive_reply").length],
+    ["RDV",activities.filter(a=>a.type==="call").length],
+    ["Clients",activities.filter(a=>a.type==="client").length],
+  ];
   const kpis = [
     ["Prospects", leads.length],
     ["Qualifiés", leads.filter(l=>["Qualifié","À ajouter","Connecté","Message prêt","Contacté","Répondu"].includes(l.stage)).length],
@@ -152,6 +163,7 @@ export default function Home(){
     <section className="kpis">
       {kpis.map(([label,value])=><div className="kpi" key={label as string}><span>{label}</span><strong>{value}</strong></div>)}
     </section>
+    <section className="funnel-strip">{funnel.map(([label,value],i)=><div className="funnel-step" key={label as string}><span>{label}</span><strong>{value}</strong>{i>0&&<small>{Number(funnel[i-1][1])?Math.round(Number(value)/Number(funnel[i-1][1])*100):0}%</small>}</div>)}</section>
 
     <section className="board-panel">
       <div className="board-head">
