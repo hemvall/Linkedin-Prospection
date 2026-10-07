@@ -19,6 +19,7 @@ export type Lead = {
   why: string;
   angle: string;
   message: string;
+  position?: number;
 };
 
 export const leads: Lead[] = [

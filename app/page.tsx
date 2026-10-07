@@ -1,28 +1,81 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
+import { useDraggable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import { supabase } from "../lib/supabase";
 import { leads as initialLeads, Lead, LeadStage } from "../data/leads";
 import { prospectCandidates } from "../data/discovery";
 
 const stages: LeadStage[] = ["Découvert","Qualifié","À ajouter","Connecté","Message prêt","Contacté","Répondu"];
 
+function DraggableLead({lead,onOpen}:{lead:Lead,onOpen:(lead:Lead)=>void}){
+  const {attributes,listeners,setNodeRef,transform,isDragging}=useDraggable({id:String(lead.id),data:{lead}});
+  const style={transform:CSS.Translate.toString(transform),opacity:isDragging?.35:1};
+  return <article ref={setNodeRef} style={style} className="lead-card draggable" {...listeners} {...attributes} onClick={()=>{if(!isDragging) onOpen(lead)}}>
+    <div className="lead-top"><div className="company-dot">{lead.company.charAt(0)}</div><div className="lead-name"><strong>{lead.company}</strong><span>{lead.contact}</span></div><div className={"score "+(lead.score>=90?"hot":"")}>{lead.score}</div></div>
+    <p>{lead.why}</p><div className="tags">{lead.tags.map(t=><span key={t}>{t}</span>)}</div><div className="card-footer"><span>Voir le dossier</span><span>↗</span></div>
+  </article>
+}
+function DropColumn({stage,children}:{stage:LeadStage,children:React.ReactNode}){
+  const {setNodeRef,isOver}=useDroppable({id:stage});
+  return <div ref={setNodeRef} className={"stack drop-zone "+(isOver?"is-over":"")}>{children}</div>
+}
+
 export default function Home(){
-  const [leads,setLeads] = useState(initialLeads);
+  const [leads,setLeads] = useState<Lead[]>([]);
+  const [loading,setLoading] = useState(true);
+  const [activeLead,setActiveLead] = useState<Lead|null>(null);
+  const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:6}}));
   const [selected,setSelected] = useState<Lead | null>(initialLeads[4]);
   const [query,setQuery] = useState("");
   const [discoverOpen,setDiscoverOpen] = useState(false);
+
+  useEffect(()=>{ void loadLeads(); },[]);
+
+  async function loadLeads(){
+    setLoading(true);
+    const {data,error}=await supabase.from("prospects").select("*").order("position",{ascending:true}).order("id",{ascending:true});
+    if(error){ console.error(error); setLeads(initialLeads); }
+    else if(!data?.length){
+      const seed=initialLeads.map((lead,index)=>({...lead,linkedin:lead.linkedin??"",position:index}));
+      const {data:inserted,error:seedError}=await supabase.from("prospects").insert(seed).select();
+      if(seedError){console.error(seedError);setLeads(initialLeads)} else setLeads((inserted??[]) as Lead[]);
+    } else setLeads(data as Lead[]);
+    setLoading(false);
+  }
 
   const filtered = useMemo(() => leads.filter(l =>
     [l.company,l.contact,...l.tags].join(" ").toLowerCase().includes(query.toLowerCase())
   ),[leads,query]);
 
-  const addCandidate=(candidate: Lead)=>{
-    if(!leads.some(l=>l.company===candidate.company)) setLeads(prev=>[...prev,candidate]);
+  const addCandidate=async(candidate: Lead)=>{
+    if(leads.some(l=>l.company===candidate.company)) return;
+    const payload={...candidate,id:undefined,linkedin:candidate.linkedin??"",position:leads.filter(l=>l.stage===candidate.stage).length};
+    const {data,error}=await supabase.from("prospects").insert(payload).select().single();
+    if(error) return console.error(error);
+    setLeads(prev=>[...prev,data as Lead]);
   };
 
-  const updateStage=(id:number, stage:LeadStage)=>{
+  const updateStage=async(id:number, stage:LeadStage)=>{
+    const before=leads;
     setLeads(prev=>prev.map(l=>l.id===id?{...l,stage}:l));
     setSelected(prev=>prev?.id===id?{...prev,stage}:prev);
+    const {error}=await supabase.from("prospects").update({stage,position:leads.filter(l=>l.stage===stage).length}).eq("id",id);
+    if(error){console.error(error);setLeads(before)}
+  };
+
+  const onDragStart=(event:DragStartEvent)=>setActiveLead(event.active.data.current?.lead as Lead);
+  const onDragEnd=async(event:DragEndEvent)=>{
+    setActiveLead(null);
+    if(!event.over) return;
+    const id=Number(event.active.id);
+    const stage=event.over.id as LeadStage;
+    if(!stages.includes(stage)) return;
+    const lead=leads.find(l=>l.id===id);
+    if(!lead || lead.stage===stage) return;
+    await updateStage(id,stage);
   };
 
   const kpis = [
@@ -67,27 +120,22 @@ export default function Home(){
         <div className="tabs"><button className="tab active">Pipeline</button><button className="tab">Tous</button><button className="tab">Priorité haute</button></div>
         <div className="board-meta">{filtered.length} prospects</div>
       </div>
-      <div className="board">
-        {stages.map(stage=>{
-          const rows=filtered.filter(l=>l.stage===stage);
-          return <div className="column" key={stage}>
-            <div className="column-title"><span>{stage}</span><b>{rows.length}</b></div>
-            <div className="stack">
-              {rows.map(lead=><article className="lead-card" key={lead.id} onClick={()=>setSelected(lead)}>
-                <div className="lead-top">
-                  <div className="company-dot">{lead.company.charAt(0)}</div>
-                  <div className="lead-name"><strong>{lead.company}</strong><span>{lead.contact}</span></div>
-                  <div className={"score "+(lead.score>=90?"hot":"")}>{lead.score}</div>
-                </div>
-                <p>{lead.why}</p>
-                <div className="tags">{lead.tags.map(t=><span key={t}>{t}</span>)}</div>
-                <div className="card-footer"><span>Voir le dossier</span><span>↗</span></div>
-              </article>)}
-              {rows.length===0 && <div className="empty">Aucun prospect</div>}
+      {loading ? <div className="loading-state">Chargement du pipeline...</div> :
+      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+        <div className="board">
+          {stages.map(stage=>{
+            const rows=filtered.filter(l=>l.stage===stage);
+            return <div className="column" key={stage}>
+              <div className="column-title"><span>{stage}</span><b>{rows.length}</b></div>
+              <DropColumn stage={stage}>
+                {rows.map(lead=><DraggableLead key={lead.id} lead={lead} onOpen={setSelected}/>)}
+                {rows.length===0 && <div className="empty">Déposer ici</div>}
+              </DropColumn>
             </div>
-          </div>
-        })}
-      </div>
+          })}
+        </div>
+        <DragOverlay>{activeLead?<div className="lead-card drag-overlay"><strong>{activeLead.company}</strong><span>{activeLead.contact}</span></div>:null}</DragOverlay>
+      </DndContext>}
     </section>
 
     {discoverOpen && <div className="overlay" onClick={()=>setDiscoverOpen(false)}>
