@@ -116,6 +116,11 @@ export default function Home(){
   ];
   const actionCount=actionGroups.reduce((n,g)=>n+g.items.length,0);
 
+  const tagStats=useMemo(()=>{
+    const map=new Map<string,{total:number,replies:number,positive:number,calls:number}>();
+    for(const lead of leads) for(const tag of lead.tags){const s=map.get(tag)??{total:0,replies:0,positive:0,calls:0};s.total++;const a=activities.filter(x=>x.prospect_id===lead.id);if(a.some(x=>x.type==="reply"))s.replies++;if(a.some(x=>x.type==="positive_reply"))s.positive++;if(a.some(x=>x.type==="call"))s.calls++;map.set(tag,s)}
+    return [...map.entries()].map(([tag,s])=>({tag,...s,replyRate:s.total?Math.round(s.replies/s.total*100):0})).sort((a,b)=>b.replyRate-a.replyRate||b.total-a.total).slice(0,5);
+  },[leads,activities]);
   const funnel=[
     ["Ajoutés",leads.length],
     ["Connectés",leads.filter(l=>["Connecté","Message prêt","Contacté","Répondu"].includes(l.stage)).length],
@@ -163,6 +168,7 @@ export default function Home(){
     <section className="kpis">
       {kpis.map(([label,value])=><div className="kpi" key={label as string}><span>{label}</span><strong>{value}</strong></div>)}
     </section>
+    <section className="learning-strip"><div className="learning-head"><div><span className="eyebrow">LEARNING LOOP</span><strong>Ce qui semble fonctionner</strong></div><span>basé sur tes vraies interactions</span></div><div className="learning-items">{tagStats.map(s=><div key={s.tag}><strong>{s.tag}</strong><span>{s.total} prospects</span><b>{s.replyRate}% réponses</b><small>{s.positive} positives · {s.calls} RDV</small></div>)}</div></section>
     <section className="funnel-strip">{funnel.map(([label,value],i)=><div className="funnel-step" key={label as string}><span>{label}</span><strong>{value}</strong>{i>0&&<small>{Number(funnel[i-1][1])?Math.round(Number(value)/Number(funnel[i-1][1])*100):0}%</small>}</div>)}</section>
 
     <section className="board-panel">
