@@ -31,6 +31,12 @@ export default function Home(){
   const [selected,setSelected] = useState<Lead | null>(initialLeads[4]);
   const [query,setQuery] = useState("");
   const [discoverOpen,setDiscoverOpen] = useState(false);
+  const [menuOpen,setMenuOpen] = useState(false);
+  const [profileOpen,setProfileOpen] = useState(false);
+  const [view,setView] = useState<"pipeline"|"list"|"priority">("pipeline");
+  const [compact,setCompact] = useState(false);
+  const [scoreMin,setScoreMin] = useState(0);
+  const [stageFilter,setStageFilter] = useState<LeadStage|"Tous">("Tous");
 
   useEffect(()=>{ void loadLeads(); },[]);
 
@@ -48,7 +54,10 @@ export default function Home(){
 
   const filtered = useMemo(() => leads.filter(l =>
     [l.company,l.contact,...l.tags].join(" ").toLowerCase().includes(query.toLowerCase())
-  ),[leads,query]);
+    && l.score>=scoreMin
+    && (stageFilter==="Tous" || l.stage===stageFilter)
+    && (view!=="priority" || l.score>=90)
+  ),[leads,query,scoreMin,stageFilter,view]);
 
   const addCandidate=async(candidate: Lead)=>{
     if(leads.some(l=>l.company===candidate.company)) return;
@@ -63,6 +72,14 @@ export default function Home(){
     setLeads(prev=>prev.map(l=>l.id===id?{...l,stage}:l));
     setSelected(prev=>prev?.id===id?{...prev,stage}:prev);
     const {error}=await supabase.from("prospects").update({stage,position:leads.filter(l=>l.stage===stage).length}).eq("id",id);
+    if(error){console.error(error);setLeads(before)}
+  };
+
+  const saveLead=async(id:number, patch:Partial<Lead>)=>{
+    const before=leads;
+    setLeads(prev=>prev.map(l=>l.id===id?{...l,...patch}:l));
+    setSelected(prev=>prev?.id===id?{...prev,...patch}:prev);
+    const {error}=await supabase.from("prospects").update(patch).eq("id",id);
     if(error){console.error(error);setLeads(before)}
   };
 
@@ -97,8 +114,10 @@ export default function Home(){
       </div>
       <div className="header-actions">
         <div className="search"><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Rechercher un prospect..." /></div>
-        <button className="icon-btn" title="Filtres">≡</button>
-        <button className="avatar">LS</button>
+        <div className="menu-wrap"><button className="icon-btn" title="Filtres" onClick={()=>setMenuOpen(v=>!v)}>≡</button>
+        {menuOpen&&<div className="popover filter-pop"><strong>Affichage</strong><label>Étape<select value={stageFilter} onChange={e=>setStageFilter(e.target.value as LeadStage|"Tous")}><option>Tous</option>{stages.map(s=><option key={s}>{s}</option>)}</select></label><label>Score minimum<input type="range" min="0" max="100" step="5" value={scoreMin} onChange={e=>setScoreMin(Number(e.target.value))}/><span>{scoreMin}+</span></label><button onClick={()=>setCompact(v=>!v)}>{compact?"Cartes confortables":"Cartes compactes"}</button><button onClick={()=>{setScoreMin(0);setStageFilter("Tous");setQuery("")}}>Réinitialiser</button></div>}</div>
+        <div className="menu-wrap"><button className="avatar" onClick={()=>setProfileOpen(v=>!v)}>LS</button>
+        {profileOpen&&<div className="popover profile-pop"><div className="profile-row"><div className="profile-avatar">LS</div><div><strong>Louis Serrano</strong><span>AI Engineer</span></div></div><a href="https://lserrano.dev" target="_blank">Ouvrir le portfolio ↗</a><button onClick={()=>setDiscoverOpen(true)}>Trouver des prospects</button><button onClick={()=>setView("list")}>Vue liste</button></div>}</div>
       </div>
     </header>
 
@@ -117,16 +136,18 @@ export default function Home(){
 
     <section className="board-panel">
       <div className="board-head">
-        <div className="tabs"><button className="tab active">Pipeline</button><button className="tab">Tous</button><button className="tab">Priorité haute</button></div>
+        <div className="tabs"><button className={"tab "+(view==="pipeline"?"active":"")} onClick={()=>setView("pipeline")}>Pipeline</button><button className={"tab "+(view==="list"?"active":"")} onClick={()=>setView("list")}>Tous</button><button className={"tab "+(view==="priority"?"active":"")} onClick={()=>setView("priority")}>Priorité haute</button></div>
         <div className="board-meta">{filtered.length} prospects</div>
       </div>
-      {loading ? <div className="loading-state">Chargement du pipeline...</div> :
+      {loading ? <div className="loading-state">Chargement du pipeline...</div> : view==="list" ?
+      <div className="lead-table-wrap"><table className="lead-table"><thead><tr><th>Entreprise</th><th>Contact</th><th>Étape</th><th>Score</th><th>Tags</th><th></th></tr></thead><tbody>{filtered.map(lead=><tr key={lead.id} onClick={()=>setSelected(lead)}><td><strong>{lead.company}</strong></td><td>{lead.contact}</td><td><span className="stage-pill">{lead.stage}</span></td><td>{lead.score}</td><td><div className="tags">{lead.tags.slice(0,2).map(t=><span key={t}>{t}</span>)}</div></td><td>↗</td></tr>)}</tbody></table></div> :
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="board">
+        <div className={"board "+(compact?"compact-board":"")}>
           {stages.map(stage=>{
             const rows=filtered.filter(l=>l.stage===stage);
             return <div className="column" key={stage}>
               <div className="column-title"><span>{stage}</span><b>{rows.length}</b></div>
+              {rows.length>4&&<div className="column-hint">{rows.length} prospects · scroll ↓</div>}
               <DropColumn stage={stage}>
                 {rows.map(lead=><DraggableLead key={lead.id} lead={lead} onOpen={setSelected}/>)}
                 {rows.length===0 && <div className="empty">Déposer ici</div>}
@@ -193,6 +214,7 @@ export default function Home(){
 
         <section className="drawer-section"><h3>Pourquoi c'est un bon match</h3><p>{selected.why}</p></section>
         <section className="drawer-section"><h3>Angle recommandé</h3><p>{selected.angle}</p></section>
+        <section className="drawer-section crm-section"><div className="section-title"><h3>Suivi</h3><span className="save-hint">sauvegarde auto</span></div><label>Relance<input type="date" value={selected.follow_up_at??""} onChange={e=>saveLead(selected.id,{follow_up_at:e.target.value||null})}/></label><label>Notes<textarea className="notes-area" value={selected.notes??""} onChange={e=>saveLead(selected.id,{notes:e.target.value})} placeholder="Contexte, réponse, prochaine action..." /></label></section>
         <section className="drawer-section message-section">
           <div className="section-title"><h3>Message préparé</h3><button onClick={()=>navigator.clipboard.writeText(selected.message)}>Copier</button></div>
           <textarea value={selected.message} readOnly />
