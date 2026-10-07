@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { leads as initialLeads, Lead, LeadStage } from "../data/leads";
+import { prospectCandidates } from "../data/discovery";
 
 const stages: LeadStage[] = ["Découvert","Qualifié","À ajouter","Connecté","Message prêt","Contacté","Répondu"];
 
@@ -9,10 +10,15 @@ export default function Home(){
   const [leads,setLeads] = useState(initialLeads);
   const [selected,setSelected] = useState<Lead | null>(initialLeads[4]);
   const [query,setQuery] = useState("");
+  const [discoverOpen,setDiscoverOpen] = useState(false);
 
   const filtered = useMemo(() => leads.filter(l =>
     [l.company,l.contact,...l.tags].join(" ").toLowerCase().includes(query.toLowerCase())
   ),[leads,query]);
+
+  const addCandidate=(candidate: Lead)=>{
+    if(!leads.some(l=>l.company===candidate.company)) setLeads(prev=>[...prev,candidate]);
+  };
 
   const updateStage=(id:number, stage:LeadStage)=>{
     setLeads(prev=>prev.map(l=>l.id===id?{...l,stage}:l));
@@ -49,7 +55,7 @@ export default function Home(){
         <h1>Prospects qualifiés</h1>
         <p>Les bons comptes, la bonne personne, le bon angle. Tu gardes la validation humaine.</p>
       </div>
-      <button className="primary">+ Ajouter un prospect</button>
+      <div className="hero-actions"><button className="secondary" onClick={()=>setDiscoverOpen(true)}>Trouver des prospects</button><button className="primary">+ Ajouter un prospect</button></div>
     </section>
 
     <section className="kpis">
@@ -83,6 +89,33 @@ export default function Home(){
         })}
       </div>
     </section>
+
+    {discoverOpen && <div className="overlay" onClick={()=>setDiscoverOpen(false)}>
+      <aside className="drawer discovery-drawer" onClick={e=>e.stopPropagation()}>
+        <div className="drawer-head">
+          <div><div className="eyebrow">DISCOVERY QUEUE</div><h2>Nouveaux prospects</h2><p>Candidats pré-qualifiés selon ton ICP.</p></div>
+          <button className="close" onClick={()=>setDiscoverOpen(false)}>×</button>
+        </div>
+        <div className="candidate-list">
+          {prospectCandidates.map(candidate=>{
+            const already=leads.some(l=>l.company===candidate.company);
+            return <article className="candidate-card" key={candidate.id}>
+              <div className="candidate-head">
+                <div><div className="candidate-company">{candidate.company}</div><div className="candidate-contact">{candidate.contact}</div></div>
+                <div className={"score "+(candidate.score>=90?"hot":"")}>{candidate.score}</div>
+              </div>
+              <p>{candidate.why}</p>
+              <div className="tags">{candidate.tags.map(t=><span key={t}>{t}</span>)}</div>
+              <div className="candidate-source">Source : <a href={candidate.sourceUrl} target="_blank">{candidate.sourceLabel}</a></div>
+              <div className="candidate-actions">
+                <a href={candidate.website} target="_blank">Vérifier</a>
+                <button disabled={already} onClick={()=>addCandidate(candidate)}>{already?"Déjà ajouté":"Ajouter au pipeline"}</button>
+              </div>
+            </article>
+          })}
+        </div>
+      </aside>
+    </div>}
 
     {selected && <div className="overlay" onClick={()=>setSelected(null)}>
       <aside className="drawer" onClick={e=>e.stopPropagation()}>
